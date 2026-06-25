@@ -26,14 +26,16 @@ void vofa_init(void)
 void vofa_send_all(float yaw, float yaw_target, float yaw_current,
     float yaw_angle_integral, float yaw_speed_integral,
     float yaw_angle_kp, float yaw_angle_ki, float yaw_angle_kd,
-    float yaw_speed_kp, float yaw_speed_ki, float yaw_speed_kd)
+    float yaw_speed_kp, float yaw_speed_ki, float yaw_speed_kd,
+    float yaw_ff_output, float pitch_ff_output)
 {
-    float data[11] = {yaw, yaw_target, yaw_current,
+    float data[13] = {yaw, yaw_target, yaw_current,
         yaw_angle_integral, yaw_speed_integral,
         yaw_angle_kp, yaw_angle_ki, yaw_angle_kd,
-        yaw_speed_kp, yaw_speed_ki, yaw_speed_kd};
-    uint8_t send_buf[48];
-    uint32_t len = pack_vofa_justfloat(send_buf, data, 11);
+        yaw_speed_kp, yaw_speed_ki, yaw_speed_kd,
+        yaw_ff_output, pitch_ff_output};
+    uint8_t send_buf[56];
+    uint32_t len = pack_vofa_justfloat(send_buf, data, 13);
     HAL_UART_Transmit(vofa_uart, send_buf, len, HAL_MAX_DELAY);
 }
 

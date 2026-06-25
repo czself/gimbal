@@ -1,5 +1,4 @@
 #include "gimbal.h"
-#include "bsp_bmi088.h"
 #include "ahrs.h"
 #include <string.h>
 #include <math.h>
@@ -19,10 +18,11 @@ float          gimbal_output[8];
 pid_t          gimbal_pid[8];
 pid_t          gimbal_speed_pid[8];
 float          gimbal_speed_target[8];
+float          gimbal_actual_speed[8];
 uint8_t        gimbal_ctrl_mode = 0;
 
-float gimbal_imu_pitch = 0.0f;
-float gimbal_imu_yaw = 0.0f;
+float          gimbal_imu_pitch = 0.0f;
+float          gimbal_imu_yaw = 0.0f;
 
 static uint8_t  can_rx_buf[8];
 uint8_t  gimbal_can_rx_buf[8];
@@ -30,17 +30,11 @@ uint32_t gimbal_can_send_cnt;
 uint32_t gimbal_can_fail_cnt;
 uint32_t gimbal_can_recv_cnt;
 uint32_t gimbal_can_recv_all;
-uint32_t gimbal_can_error;
-uint32_t gimbal_can_tec;
-uint32_t gimbal_can_rec;
-uint32_t gimbal_can_lec;
-uint32_t gimbal_rx_stdid;
 
 float gimbal_imu_offset_pitch = 0.0f;
 float gimbal_imu_offset_yaw = 0.0f;
 uint8_t gimbal_imu_calibrated = 0;
 
-float gimbal_gyro_ff[8];
 float gimbal_ff_output[8];
 
 static void gimbal_can_init(void)
@@ -77,8 +71,6 @@ static void gimbal_can_init(void)
 
     HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 2, 0);
     HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
-    HAL_NVIC_SetPriority(CAN1_TX_IRQn, 2, 0);
-    HAL_NVIC_EnableIRQ(CAN1_TX_IRQn);
 
     CAN_FilterTypeDef filter = {0};
     filter.FilterBank = 0;
@@ -119,22 +111,18 @@ void gimbal_init(void)
 
     for (int i = 0; i < 8; i++) {
         pid_init(&gimbal_pid[i], 0.0f, 0.0f, 0.0f, 3000.0f, 500.0f);
-        pid_init(&gimbal_speed_pid[i], 0.0f, 0.0f, 0.0f, 3000.0f, GM6020_MAX_CURRENT);
-        gimbal_gyro_ff[i] = 0.0f;
+        pid_init(&gimbal_speed_pid[i], 0.0f, 0.0f, 0.0f, 3000.0f, GM6020_MAX_VOLTAGE);
         gimbal_ff_output[i] = 0.0f;
     }
 
-    /* pitch id=1 */
-    pid_init(&gimbal_pid[1], 5.0f, 0.0f, 0.0f, 3000.0f, 3000.0f);
+    pid_init(&gimbal_pid[1], 30.0f, 0.2f, 0.0f, 500.0f, 500.0f);
     gimbal_pid[1].wrap_angle = 1;
-    pid_init(&gimbal_speed_pid[1], 90.0f, 12.0f, 0.0f, 3000.0f, GM6020_MAX_VOLTAGE);
-    gimbal_gyro_ff[1] = 0.0f;
+    pid_init(&gimbal_speed_pid[1], 10.8f, 1.0f, 0.0f, 30000.0f, GM6020_MAX_VOLTAGE);
+    gimbal_speed_pid[1].d_on_measurement = 1;
 
-    /* yaw id=5 */
-    pid_init(&gimbal_pid[5], 2.0f, 0.0f, 0.0f, 3000.0f, 3000.0f);
+    pid_init(&gimbal_pid[5], 3.0f, 0.0f, 0.0f, 500.0f, 500.0f);
     gimbal_pid[5].wrap_angle = 1;
-    pid_init(&gimbal_speed_pid[5], 20.0f, 0.5f, 0.0f, 3000.0f, GM6020_MAX_VOLTAGE);
-    gimbal_gyro_ff[5] = 0.0f;
+    pid_init(&gimbal_speed_pid[5], 15.0f, 0.0f, 0.0f, 30000.0f, GM6020_MAX_VOLTAGE);
 
     gimbal_can_init();
 
@@ -181,64 +169,33 @@ void gimbal_update(void)
 {
     float dt = 0.005f;
     uint8_t data[8];
+    float roll, pitch, yaw;
 
-    float gyro_yaw   = bmi088_data.gyro.z;
-    float gyro_pitch = bmi088_data.gyro.y;
+    ahrs_get_euler(&roll, &pitch, &yaw);
+    gimbal_imu_pitch = pitch * RAD2DEG - gimbal_imu_offset_pitch;
+    gimbal_imu_yaw = yaw * RAD2DEG - gimbal_imu_offset_yaw;
 
-    if (gimbal_imu_calibrated) {
-        float roll, pitch, yaw;
-        ahrs_get_euler(&roll, &pitch, &yaw);
-        gimbal_imu_pitch = pitch * RAD2DEG - gimbal_imu_offset_pitch;
-        gimbal_imu_yaw = yaw * RAD2DEG - gimbal_imu_offset_yaw;
+    if (gimbal_can_fail_cnt >= 9999) {
+        return;
     }
 
     for (int i = 0; i < 8; i++) {
-        if (!gimbal_motor[i].online) {
-            gimbal_output[i] = 0.0f;
-            gimbal_speed_target[i] = 0.0f;
-            continue;
-        }
-
-        float actual_speed;
-        if (i == 1) {
-            actual_speed = gyro_pitch * RAD2DEG;
-        } else if (i == 5) {
-            actual_speed = gyro_yaw * RAD2DEG;
-        } else {
-            actual_speed = gimbal_motor[i].speed_rpm / 60.0f * 360.0f;
-        }
-
-        float angle_feedback;
-        if (gimbal_imu_calibrated) {
-            if (i == 1) {
-                angle_feedback = gimbal_imu_pitch;
-            } else if (i == 5) {
-                angle_feedback = gimbal_imu_yaw;
-            } else {
-                angle_feedback = gimbal_motor[i].angle_deg;
-            }
-        } else {
-            angle_feedback = gimbal_motor[i].angle_deg;
-        }
-
-        gimbal_speed_target[i] = pid_calc(&gimbal_pid[i],
-            gimbal_target[i], angle_feedback, dt);
-
-        gimbal_output[i] = pid_calc(&gimbal_speed_pid[i],
-            gimbal_speed_target[i], actual_speed, dt);
-
-        gimbal_ff_output[i] = -actual_speed * gimbal_gyro_ff[i];
-        gimbal_output[i] += gimbal_ff_output[i];
+        gimbal_output[i] = 0.0f;
+        gimbal_speed_target[i] = 0.0f;
     }
 
-    if (gimbal_can_fail_cnt >= 9999 || !gimbal_imu_calibrated) {
-        return;
+    if (gimbal_motor[1].online) {
+        gimbal_actual_speed[1] = gimbal_motor[1].speed_rpm * 6.0f;
+
+        gimbal_speed_target[1] = pid_calc(&gimbal_pid[1],
+            gimbal_target[1], gimbal_imu_pitch, dt);
+
+        gimbal_output[1] = pid_calc(&gimbal_speed_pid[1],
+            gimbal_speed_target[1], gimbal_actual_speed[1], dt);
     }
 
     CAN_TxHeaderTypeDef *hdr_1_4 = gimbal_ctrl_mode
         ? &tx_header_curr_1_4 : &tx_header_volt_1_4;
-    CAN_TxHeaderTypeDef *hdr_5_7 = gimbal_ctrl_mode
-        ? &tx_header_curr_5_7 : &tx_header_volt_5_7;
 
     data[0] = ((int16_t)gimbal_output[1] >> 8) & 0xFF;
     data[1] = ((int16_t)gimbal_output[1] >> 0) & 0xFF;
@@ -252,21 +209,7 @@ void gimbal_update(void)
     data[4] = ((int16_t)gimbal_output[5] >> 8) & 0xFF;
     data[5] = ((int16_t)gimbal_output[5] >> 0) & 0xFF;
     data[6] = 0; data[7] = 0;
-    can_send_safe(hdr_5_7, data);
-
-    {
-        uint32_t esr = CAN1->ESR;
-        gimbal_can_error = esr;
-        gimbal_can_tec   = (esr >> 16) & 0xFF;
-        gimbal_can_rec   = (esr >> 24) & 0xFF;
-        gimbal_can_lec   = (esr >> 4) & 0x07;
-
-        if (gimbal_can_tec >= 128 || gimbal_can_rec >= 128) {
-            HAL_CAN_ResetError(&hcan1);
-            HAL_CAN_Stop(&hcan1);
-            HAL_CAN_Start(&hcan1);
-        }
-    }
+    can_send_safe(&tx_header_volt_5_7, data);
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
@@ -274,8 +217,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     CAN_RxHeaderTypeDef rx_header;
     HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rx_header, can_rx_buf);
     gimbal_can_recv_all++;
-    gimbal_rx_stdid = rx_header.StdId;
-
     gimbal_can_rx_buf[0] = can_rx_buf[0];
     gimbal_can_rx_buf[1] = can_rx_buf[1];
     gimbal_can_rx_buf[2] = can_rx_buf[2];

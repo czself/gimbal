@@ -12,6 +12,11 @@ TIM_HandleTypeDef htim6;
 static float last_cmd_char;
 static float last_cmd_val;
 
+static float gyro_lpf_roll  = 0.0f;
+static float gyro_lpf_pitch = 0.0f;
+static float gyro_lpf_yaw   = 0.0f;
+#define GYRO_LPF_ALPHA  0.2f
+
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
@@ -39,7 +44,7 @@ int main(void)
 
     if (bmi088_ret != 0) {
         while (1) {
-            vofa_send_all(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+            vofa_send_all(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
             HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_12);
             HAL_Delay(5);
         }
@@ -69,19 +74,17 @@ int main(void)
 
             bmi088_read_all();
 
+            gyro_lpf_roll  = GYRO_LPF_ALPHA * bmi088_data.gyro.x + (1.0f - GYRO_LPF_ALPHA) * gyro_lpf_roll;
+            gyro_lpf_pitch = GYRO_LPF_ALPHA * bmi088_data.gyro.y + (1.0f - GYRO_LPF_ALPHA) * gyro_lpf_pitch;
+            gyro_lpf_yaw   = GYRO_LPF_ALPHA * bmi088_data.gyro.z + (1.0f - GYRO_LPF_ALPHA) * gyro_lpf_yaw;
+
             ahrs_update(
-                bmi088_data.gyro.x, bmi088_data.gyro.y, bmi088_data.gyro.z,
+                gyro_lpf_roll, gyro_lpf_pitch, gyro_lpf_yaw,
                 bmi088_data.accel.x, bmi088_data.accel.y, bmi088_data.accel.z,
                 0.005f
             );
 
             ahrs_get_euler(&roll, &pitch, &yaw);
-
-            if (!gimbal_imu_calibrated && HAL_GetTick() > 500) {
-                gimbal_imu_calibrate(pitch * 57.2957795131f, yaw * 57.2957795131f);
-                gimbal_set_target(1, 0.0f);
-                gimbal_set_target(5, 0.0f);
-            }
 
             gimbal_update();
 
@@ -135,10 +138,6 @@ int main(void)
                 } else if (cmd == 'Z') {
                     gimbal_speed_pid[1].kd = val;
                     gimbal_speed_pid[1].integral = 0.0f;
-                } else if (cmd == 'f') {
-                    gimbal_gyro_ff[5] = val;
-                } else if (cmd == 'F') {
-                    gimbal_gyro_ff[1] = val;
                 } else if (cmd == 'm') {
                     gimbal_set_ctrl_mode((uint8_t)val);
                 } else if (cmd == 'c') {
@@ -149,11 +148,14 @@ int main(void)
             }
 
             vofa_send_all(
-                gimbal_imu_yaw,
-                gimbal_target[5], gimbal_imu_yaw,
-                gimbal_pid[5].integral, gimbal_speed_pid[5].integral,
-                gimbal_pid[5].kp, gimbal_pid[5].ki, gimbal_pid[5].kd,
-                gimbal_speed_pid[5].kp, gimbal_speed_pid[5].ki, gimbal_speed_pid[5].kd
+                gimbal_imu_pitch,
+                gimbal_target[1],
+                gimbal_actual_speed[1],
+                gimbal_speed_target[1],
+                gimbal_output[1],
+                gimbal_pid[1].kp, gimbal_pid[1].ki, gimbal_pid[1].kd,
+                gimbal_speed_pid[1].kp, gimbal_speed_pid[1].ki, gimbal_speed_pid[1].kd,
+                gimbal_ff_output[1], gimbal_ff_output[5]
             );
 
             HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_11);

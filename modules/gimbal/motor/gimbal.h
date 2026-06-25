@@ -31,6 +31,7 @@ void gimbal_init(void);
 void gimbal_set_target(uint8_t id, float angle_deg);
 void gimbal_set_ctrl_mode(uint8_t mode);
 void gimbal_update(void);
+void gimbal_imu_calibrate(float pitch, float yaw);
 
 extern gm6020_motor_t gimbal_motor[8];
 extern float gimbal_target[8];
@@ -38,16 +39,12 @@ extern float gimbal_output[8];
 extern pid_t gimbal_pid[8];
 extern pid_t gimbal_speed_pid[8];
 extern float gimbal_speed_target[8];
+extern float gimbal_actual_speed[8];
 extern uint8_t gimbal_ctrl_mode;
 extern uint32_t gimbal_can_send_cnt;
 extern uint32_t gimbal_can_fail_cnt;
 extern uint32_t gimbal_can_recv_cnt;
 extern uint32_t gimbal_can_recv_all;
-extern uint32_t gimbal_can_error;
-extern uint32_t gimbal_can_tec;
-extern uint32_t gimbal_can_rec;
-extern uint32_t gimbal_can_lec;
-extern uint32_t gimbal_rx_stdid;
 extern uint8_t  gimbal_can_rx_buf[8];
 
 extern float gimbal_imu_offset_pitch;
@@ -56,10 +53,7 @@ extern uint8_t gimbal_imu_calibrated;
 extern float gimbal_imu_pitch;
 extern float gimbal_imu_yaw;
 
-extern float gimbal_gyro_ff[8];
 extern float gimbal_ff_output[8];
-
-void gimbal_imu_calibrate(float pitch, float yaw);
 
 #ifdef __cplusplus
 }

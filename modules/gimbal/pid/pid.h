@@ -13,11 +13,13 @@ typedef struct {
     float kd;
     float integral;
     float prev_error;
+    float prev_current;
     float integral_limit;
     float output_limit;
     float raw_output;
     float error;
     uint8_t wrap_angle;
+    uint8_t d_on_measurement;
 } pid_t;
 
 void pid_init(pid_t *pid, float kp, float ki, float kd, float integral_limit, float output_limit);

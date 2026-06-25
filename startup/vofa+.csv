@@ -1,4 +1,4 @@
-roll,pitch,yaw,pitch_target,pitch_current,yaw_target,yaw_current
+pitch_angle,pitch_target,pitch_speed,pitch_speed_target,pitch_output,pitch_angle_kp,pitch_angle_ki,pitch_angle_kd,pitch_speed_kp,pitch_speed_ki,pitch_speed_kd,pitch_ff_output,yaw_ff_output
 -2.3,0.1,1.3,0.0,0.0,0.0,1.3
 -2.3,0.1,1.3,0.0,0.0,0.0,1.3
 -2.3,0.1,1.3,0.0,0.0,0.0,1.3
