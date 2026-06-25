@@ -115,7 +115,7 @@ void gimbal_init(void)
         gimbal_ff_output[i] = 0.0f;
     }
 
-    pid_init(&gimbal_pid[1], 30.0f, 0.2f, 0.0f, 500.0f, 500.0f);
+    pid_init(&gimbal_pid[1], 27.0f, 0.1f, 0.0f, 500.0f, 500.0f);
     gimbal_pid[1].wrap_angle = 1;
     pid_init(&gimbal_speed_pid[1], 10.8f, 1.0f, 0.0f, 30000.0f, GM6020_MAX_VOLTAGE);
     gimbal_speed_pid[1].d_on_measurement = 1;
