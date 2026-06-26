@@ -39,7 +39,7 @@ float pid_calc(pid_t *pid, float target, float current, float dt)
         pid->integral += error * dt;
 
         if (abs_error < 1.0f) {
-            pid->integral *= 0.98f;
+            pid->integral *= 0.999f;
         }
     } else {
 

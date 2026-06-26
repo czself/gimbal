@@ -143,7 +143,42 @@ gimbal_motor[5].angle_deg;        // 反馈也在 motor[5] ✓
 
 ---
 
-## 三、调试方法论
+## 三、AHRS / 姿态解算错误
+
+### Bug 8: Yaw 轴持续漂移（顺时针旋转） ⭐⭐
+- **现象**：云台静止时 yaw 角持续顺时针漂移
+- **原因**：BMI088 无磁力计，`twoKi=0` 零偏未补偿
+- **解决**：上电 1 秒静止校准 + 启用积分项 `twoKi=0.01` + `ahrs_update` 减去零偏
+- **关键代码**：[ahrs.c](file:///home/sz/coderepo/robomater_game/gimbal/modules/imu/ahrs/ahrs.c#L39-L44)
+
+### Bug 9: Yaw 轴电机有时不出力 ⭐⭐
+- **现象**：yaw 电机有时不推，误差一直存在不锁定
+- **原因链**（两个问题叠加）：
+
+#### 9a. 角度环 Ki=0
+```c
+// 旧：纯比例控制，没有积分消除稳态误差
+pid_init(&gimbal_pid[5], 15.0f, 0.0f, 0.0f, ...);
+```
+
+#### 9b. 积分衰减太激进
+```c
+// 旧：abs_error < 1° 时每周期衰减 2%
+// 200Hz 下 1 秒后积分仅剩 1.8%，需要持续出力时积分瞬间没了
+if (abs_error < 1.0f) {
+    pid->integral *= 0.98f;
+}
+```
+
+- **解决**：
+  1. yaw 角度环 Ki = 0.05（[gimbal.c](file:///home/sz/coderepo/robomater_game/gimbal/modules/gimbal/motor/gimbal.c#L124)）
+  2. 衰减调缓到 0.999（[pid.c](file:///home/sz/coderepo/robomater_game/gimbal/modules/gimbal/pid/pid.c#L43)）
+
+- **效果**：积分能累积并保持，yaw 持续出力顶住误差
+
+---
+
+## 四、调试方法论
 
 ### 逐级排查 CAN 通信
 1. **物理层**：接线（CANH/CANL）、终端电阻、供电（24V）
@@ -167,7 +202,7 @@ gimbal_motor[5].angle_deg;        // 反馈也在 motor[5] ✓
 
 ---
 
-## 四、GM6020 协议速查
+## 五、GM6020 协议速查
 
 ### 报文 ID 定义
 | 功能 | ID范围 | 说明 |
@@ -201,7 +236,7 @@ angle_deg = ecd * 360.0f / 8192.0f;
 
 ---
 
-## 五、文件结构
+## 六、文件结构
 
 ```
 demol/
