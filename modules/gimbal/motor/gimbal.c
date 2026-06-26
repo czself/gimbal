@@ -174,8 +174,8 @@ void gimbal_update(void)
     float roll, pitch, yaw;
 
     ahrs_get_euler(&roll, &pitch, &yaw);
-    gimbal_imu_pitch = pitch * RAD2DEG - gimbal_imu_offset_pitch;
-    gimbal_imu_yaw = yaw * RAD2DEG - gimbal_imu_offset_yaw;
+    gimbal_imu_pitch = pitch * RAD2DEG;
+    gimbal_imu_yaw = yaw * RAD2DEG;
 
     if (gimbal_can_fail_cnt >= 9999) {
         return;

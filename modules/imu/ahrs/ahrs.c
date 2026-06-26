@@ -3,7 +3,7 @@
 
 ahrs_quat_t ahrs_quat = {1.0f, 0.0f, 0.0f, 0.0f};
 
-static float twoKp = 2.0f * 0.5f;
+static float twoKp = 2.0f * 1.5f;
 static float twoKi = 2.0f * 0.0f;
 static float integralFBx = 0.0f;
 static float integralFBy = 0.0f;

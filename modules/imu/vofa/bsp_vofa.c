@@ -23,18 +23,42 @@ void vofa_init(void)
     vofa_uart = &huart6;
 }
 
-void vofa_send_all(float yaw, float yaw_target, float yaw_current,
-    float yaw_angle_integral, float yaw_speed_integral,
+void vofa_send_all(
+    float pitch_angle, float pitch_target, float pitch_actual_speed,
+    float pitch_speed_target, float pitch_output,
+    float pitch_angle_kp, float pitch_angle_ki, float pitch_angle_kd,
+    float pitch_speed_kp, float pitch_speed_ki,
+    float yaw_angle, float yaw_target, float yaw_actual_speed,
+    float yaw_speed_target, float yaw_output,
     float yaw_angle_kp, float yaw_angle_ki, float yaw_angle_kd,
-    float yaw_speed_kp, float yaw_speed_ki, float yaw_speed_kd,
-    float yaw_ff_output, float pitch_ff_output)
+    float yaw_speed_kp, float yaw_speed_ki)
 {
-    float data[13] = {yaw, yaw_target, yaw_current,
-        yaw_angle_integral, yaw_speed_integral,
+    float data[20] = {
+        pitch_angle, pitch_target, pitch_actual_speed,
+        pitch_speed_target, pitch_output,
+        pitch_angle_kp, pitch_angle_ki, pitch_angle_kd,
+        pitch_speed_kp, pitch_speed_ki,
+        yaw_angle, yaw_target, yaw_actual_speed,
+        yaw_speed_target, yaw_output,
         yaw_angle_kp, yaw_angle_ki, yaw_angle_kd,
-        yaw_speed_kp, yaw_speed_ki, yaw_speed_kd,
-        yaw_ff_output, pitch_ff_output};
-    uint8_t send_buf[56];
+        yaw_speed_kp, yaw_speed_ki};
+    uint8_t send_buf[4 * 20 + 4];
+    uint32_t len = pack_vofa_justfloat(send_buf, data, 20);
+    HAL_UART_Transmit(vofa_uart, send_buf, len, HAL_MAX_DELAY);
+}
+
+void vofa_send_imu(float accel_x, float accel_y, float accel_z,
+    float gyro_x, float gyro_y, float gyro_z,
+    float roll, float pitch, float yaw,
+    float gimbal_imu_pitch, float gimbal_imu_yaw,
+    float gyro_lpf_y, float gyro_lpf_z)
+{
+    float data[13] = {accel_x, accel_y, accel_z,
+        gyro_x, gyro_y, gyro_z,
+        roll * 57.2957795131f, pitch * 57.2957795131f, yaw * 57.2957795131f,
+        gimbal_imu_pitch, gimbal_imu_yaw,
+        gyro_lpf_y, gyro_lpf_z};
+    uint8_t send_buf[4 * 13 + 4];
     uint32_t len = pack_vofa_justfloat(send_buf, data, 13);
     HAL_UART_Transmit(vofa_uart, send_buf, len, HAL_MAX_DELAY);
 }

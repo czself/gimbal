@@ -54,6 +54,7 @@ extern float gimbal_imu_pitch;
 extern float gimbal_imu_yaw;
 
 extern float gimbal_ff_output[8];
+extern uint8_t gimbal_pitch_enabled;
 
 #ifdef __cplusplus
 }

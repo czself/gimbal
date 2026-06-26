@@ -11,11 +11,12 @@ TIM_HandleTypeDef htim6;
 
 static float last_cmd_char;
 static float last_cmd_val;
+static uint8_t vofa_view = 0;   /* 0 gimbal view, 1 imu view */
 
 static float gyro_lpf_roll  = 0.0f;
 static float gyro_lpf_pitch = 0.0f;
 static float gyro_lpf_yaw   = 0.0f;
-#define GYRO_LPF_ALPHA  0.2f
+#define GYRO_LPF_ALPHA  0.8f
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -44,7 +45,10 @@ int main(void)
 
     if (bmi088_ret != 0) {
         while (1) {
-            vofa_send_all(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+            vofa_send_all(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
             HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_12);
             HAL_Delay(5);
         }
@@ -138,8 +142,12 @@ int main(void)
                 } else if (cmd == 'Z') {
                     gimbal_speed_pid[1].kd = val;
                     gimbal_speed_pid[1].integral = 0.0f;
+                } else if (cmd == 'f') {
+                    gimbal_pitch_enabled = !gimbal_pitch_enabled;
                 } else if (cmd == 'm') {
                     gimbal_set_ctrl_mode((uint8_t)val);
+                } else if (cmd == 'v') {
+                    vofa_view = (uint8_t)val;
                 } else if (cmd == 'c') {
                     gimbal_imu_calibrate(pitch * 57.2957795131f, yaw * 57.2957795131f);
                     gimbal_set_target(1, 0.0f);
@@ -147,16 +155,31 @@ int main(void)
                 }
             }
 
-            vofa_send_all(
-                gimbal_imu_pitch,
-                gimbal_target[1],
-                gimbal_actual_speed[1],
-                gimbal_speed_target[1],
-                gimbal_output[1],
-                gimbal_pid[1].kp, gimbal_pid[1].ki, gimbal_pid[1].kd,
-                gimbal_speed_pid[1].kp, gimbal_speed_pid[1].ki, gimbal_speed_pid[1].kd,
-                gimbal_ff_output[1], gimbal_ff_output[5]
-            );
+            if (vofa_view == 1) {
+                vofa_send_imu(
+                    bmi088_data.accel.x, bmi088_data.accel.y, bmi088_data.accel.z,
+                    bmi088_data.gyro.x, bmi088_data.gyro.y, bmi088_data.gyro.z,
+                    roll, pitch, yaw,
+                    gimbal_imu_pitch, gimbal_imu_yaw,
+                    gyro_lpf_pitch, gyro_lpf_yaw);
+            } else {
+                vofa_send_all(
+                    gimbal_imu_pitch,
+                    gimbal_target[1],
+                    gimbal_actual_speed[1],
+                    gimbal_speed_target[1],
+                    gimbal_output[1],
+                    gimbal_pid[1].kp, gimbal_pid[1].ki, gimbal_pid[1].kd,
+                    gimbal_speed_pid[1].kp, gimbal_speed_pid[1].ki,
+                    gimbal_imu_yaw,
+                    gimbal_target[5],
+                    gimbal_actual_speed[5],
+                    gimbal_speed_target[5],
+                    gimbal_output[5],
+                    gimbal_pid[5].kp, gimbal_pid[5].ki, gimbal_pid[5].kd,
+                    gimbal_speed_pid[5].kp, gimbal_speed_pid[5].ki
+                );
+            }
 
             HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_11);
         }

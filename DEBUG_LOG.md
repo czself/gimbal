@@ -1,5 +1,38 @@
 # 调试错误总结
 
+## 零、烧录 / OpenOCD 错误
+
+### Bug 0: Unable to reset target ⭐⭐
+- **现象**：`make flash` 时报错 `timed out while waiting for target halted` / `Unable to reset target`
+- **原因**：`reset_config srst_only` 要求通过 SRST 硬件复位引脚复位芯片，但 RoboMaster C 板 SWD 接口（J8）只有 4 根线（SWDIO、SWCLK、GND、3.3V），**没有 nRESET 引脚**
+- **解决**：改为 `reset_config none`，使用软件复位（SYSRESETREQ）通过 SWD 调试接口复位内核
+- **正确 `openocd.cfg` 配置**：
+  ```cfg
+  adapter driver cmsis-dap
+  cmsis_dap_backend auto
+  transport select swd
+  cmsis_dap_vid_pid 0xfaed 0x4870
+  source [find target/stm32f4x.cfg]
+  adapter speed 500
+  reset_config none
+  ```
+- **教训**：`reset_config` 必须与硬件复位引脚连接情况匹配：
+  - `srst_only`：需要 SRST 引脚 → C 板 SWD 不支持
+  - `none`：软件复位 → 不需要额外引脚，C 板可用
+- **烧录命令**：
+  ```bash
+  make flash
+  # 等效于: openocd -f openocd.cfg -c "program build/demo1_imu.elf verify reset exit"
+  ```
+
+### CMSIS-DAP 连接问题排查
+- **设备识别**：`lsusb | grep faed` → 应看到 `ID faed:4870 Horco CMSIS-DAP`
+- **权限**：用户需在 `plugdev` 组，否则 `sudo` 或添加 udev 规则
+- **后端**：`cmsis_dap_backend auto` 自动选择最佳后端（Linux 上用 usb_bulk）
+- **固件版本**：`FW Version = Horco v0.2`（C 板内置 DAPLink）
+
+---
+
 ## 一、IMU / BMI088 错误
 
 ### 1. SPI 数据解析右移问题
