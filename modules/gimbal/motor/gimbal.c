@@ -20,6 +20,7 @@ pid_t          gimbal_speed_pid[8];
 float          gimbal_speed_target[8];
 float          gimbal_actual_speed[8];
 uint8_t        gimbal_ctrl_mode = 0;
+uint8_t        gimbal_pitch_enabled = 1;
 
 float          gimbal_imu_pitch = 0.0f;
 float          gimbal_imu_yaw = 0.0f;
@@ -120,9 +121,10 @@ void gimbal_init(void)
     pid_init(&gimbal_speed_pid[1], 10.8f, 1.0f, 0.0f, 30000.0f, GM6020_MAX_VOLTAGE);
     gimbal_speed_pid[1].d_on_measurement = 1;
 
-    pid_init(&gimbal_pid[5], 3.0f, 0.0f, 0.0f, 500.0f, 500.0f);
+    pid_init(&gimbal_pid[5], 15.0f, 0.0f, 0.0f, 300.0f, 1500.0f);
     gimbal_pid[5].wrap_angle = 1;
-    pid_init(&gimbal_speed_pid[5], 15.0f, 0.0f, 0.0f, 30000.0f, GM6020_MAX_VOLTAGE);
+    pid_init(&gimbal_speed_pid[5], 16.0f, 0.1f, 0.0f, 8000.0f, GM6020_MAX_VOLTAGE);
+    gimbal_speed_pid[5].d_on_measurement = 1;
 
     gimbal_can_init();
 
@@ -184,7 +186,7 @@ void gimbal_update(void)
         gimbal_speed_target[i] = 0.0f;
     }
 
-    if (gimbal_motor[1].online) {
+    if (gimbal_pitch_enabled && gimbal_motor[1].online) {
         gimbal_actual_speed[1] = gimbal_motor[1].speed_rpm * 6.0f;
 
         gimbal_speed_target[1] = pid_calc(&gimbal_pid[1],
@@ -194,8 +196,20 @@ void gimbal_update(void)
             gimbal_speed_target[1], gimbal_actual_speed[1], dt);
     }
 
+    if (gimbal_motor[5].online) {
+        gimbal_actual_speed[5] = gimbal_motor[5].speed_rpm * 6.0f;
+
+        gimbal_speed_target[5] = pid_calc(&gimbal_pid[5],
+            gimbal_target[5], gimbal_imu_yaw, dt);
+
+        gimbal_output[5] = pid_calc(&gimbal_speed_pid[5],
+            gimbal_speed_target[5], gimbal_actual_speed[5], dt);
+    }
+
     CAN_TxHeaderTypeDef *hdr_1_4 = gimbal_ctrl_mode
         ? &tx_header_curr_1_4 : &tx_header_volt_1_4;
+    CAN_TxHeaderTypeDef *hdr_5_7 = gimbal_ctrl_mode
+        ? &tx_header_curr_5_7 : &tx_header_volt_5_7;
 
     data[0] = ((int16_t)gimbal_output[1] >> 8) & 0xFF;
     data[1] = ((int16_t)gimbal_output[1] >> 0) & 0xFF;
@@ -204,12 +218,12 @@ void gimbal_update(void)
     data[6] = 0; data[7] = 0;
     can_send_safe(hdr_1_4, data);
 
-    data[0] = 0; data[1] = 0;
+    data[0] = ((int16_t)gimbal_output[5] >> 8) & 0xFF;
+    data[1] = ((int16_t)gimbal_output[5] >> 0) & 0xFF;
     data[2] = 0; data[3] = 0;
-    data[4] = ((int16_t)gimbal_output[5] >> 8) & 0xFF;
-    data[5] = ((int16_t)gimbal_output[5] >> 0) & 0xFF;
+    data[4] = 0; data[5] = 0;
     data[6] = 0; data[7] = 0;
-    can_send_safe(&tx_header_volt_5_7, data);
+    can_send_safe(hdr_5_7, data);
 }
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)

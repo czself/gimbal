@@ -12,6 +12,7 @@ void pid_init(pid_t *pid, float kp, float ki, float kd, float integral_limit, fl
     pid->output_limit = output_limit;
     pid->wrap_angle = 0;
     pid->d_on_measurement = 0;
+    pid->integral_decay = 0.0f;
 }
 
 float pid_calc(pid_t *pid, float target, float current, float dt)
@@ -27,10 +28,22 @@ float pid_calc(pid_t *pid, float target, float current, float dt)
 
     pid->error = error;
 
-    if (error > -0.1f && error < 0.1f) {
-        pid->integral *= 0.98f;
-    } else {
+    if (pid->integral_decay > 0.0f) {
+        pid->integral *= (1.0f - pid->integral_decay);
+    }
+
+    float abs_error = error > 0 ? error : -error;
+
+    if (abs_error < 5.0f) {
+
         pid->integral += error * dt;
+
+        if (abs_error < 1.0f) {
+            pid->integral *= 0.98f;
+        }
+    } else {
+
+        pid->integral += error * dt * 0.3f;
     }
 
     if (pid->integral > pid->integral_limit) {
@@ -52,14 +65,22 @@ float pid_calc(pid_t *pid, float target, float current, float dt)
 
     pid->raw_output = output;
 
-    pid->prev_error = error;
-    pid->prev_current = current;
-
     if (output > pid->output_limit) {
         output = pid->output_limit;
+
+        if (error > 0 && abs_error > 1.0f) {
+            pid->integral *= 0.99f;
+        }
     } else if (output < -pid->output_limit) {
         output = -pid->output_limit;
+
+        if (error < 0 && abs_error > 1.0f) {
+            pid->integral *= 0.99f;
+        }
     }
+
+    pid->prev_error = error;
+    pid->prev_current = current;
 
     return output;
 }
